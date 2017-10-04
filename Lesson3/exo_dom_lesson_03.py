@@ -90,9 +90,14 @@ if __name__ == "__main__":
 
     print('------------------- RECAP ------------------')
     x = df_stars.index.values # ranks
-    y = df_stars['Average number of stars'].tolist # number of stars
+    y = df_stars['Average number of stars'].tolist() # number of stars
+    pseudos = df_stars['Name']
     print(x,y)
-    plt.scatter(x, y, s=10)
+    plt.scatter(x, y, s=50)
+    
+    # Write pseudo for each point
+    for ind in range(len(x)):
+        plt.text(x[ind], y[ind], pseudos[x[ind]], horizontalalignment='center', verticalalignment='top')
     plt.show()
 
 
