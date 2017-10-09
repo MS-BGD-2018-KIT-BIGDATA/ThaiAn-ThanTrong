@@ -1,14 +1,14 @@
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-from matplotlib import pyplot as plt
 import json
-
-plt.style.use('ggplot')
+import time
 
 rank_limit = 10
 
 url = 'http://gist.github.com/paulmillr/2657075'
+
+my_token = ''
 def getSoupFromURL(url, method='get', data={}):
     
     if method == 'get':
@@ -31,74 +31,68 @@ def getContributors(url):
     contr = 'tr'
     soup = getSoupFromURL(url)
     
-    df = pd.DataFrame(index=range(1, rank_limit + 1), columns=['Rank', 'Name'])
+    df = pd.DataFrame(index=range(1, rank_limit +1), columns=['Rank', 'Pseudo'])
     
     if soup:
-        for i in range(1, rank_limit + 1):
-            contributor = soup.find_all(contr)[i]
-            rank = contributor.select('th')[0].text
-            name = contributor.select('a')[0].text
-            df.loc[i, 'Rank'] = rank
-            df.loc[i, 'Name'] = name
-    df = df.set_index('Rank')
-    return df
+        
+        contributors = {int(contrib.select('th')[0].text.replace('#', '')) : contrib.select('a')[0].text for contrib in soup.find_all(contr) if contrib.select('th') and contrib.select('a')}
+    
+    s = pd.Series(contributors, index = contributors.keys())
+    s = s.sort_index()
+    return s
 
 # Get the average number of stars for a contributor's set of repositories
 # param : String contributor, the pseudo of the contributor
 # return : Float avg, average number of stars
 def getStarsContributor(contributor):
+    # token needs to be regenerated each time : https://github.com/settings/tokens
+    my_headers = {'Authorization': 'token {}'.format(my_token)}
+    
     repo_url = 'https://api.github.com/users/' + contributor + '/repos'
-    res = requests.get(repo_url)
+    res = requests.get(repo_url, headers=my_headers)
+    assert res.status_code == 200
     repositories = json.loads(res.text)
     
     nb_repos = len(repositories)
-    # print('Number of repositories : ' + str(nb_repos))
+
     nb_stars = 0
 
-    for repo in repositories:
-        try:
-            nb_stars += repo['stargazers_count']
-        except ValueError:
-            print('Value is not int')
-    avg = round(float(nb_stars) / float(nb_repos), 2)
+    nb_stars = sum([repo['stargazers_count'] for repo in repositories])
+
+    if nb_repos != 0:
+        avg = round(float(nb_stars) / float(nb_repos), 2)
+    else :
+        avg = 0
     return avg
 
 # Get stars for all contributors
 # param : DataFrame df, a DataFrame that contains the top contributors
 # returns : DataFrame df_stars, a new DataFrame with rankings
-def getStarsAll(df):
-    contributors = df['Name'].tolist()
+def getStarsAll(s_contrib):
+    contributors = s_contrib.tolist()
 
-    df_stars = df = pd.DataFrame(index=range(0, rank_limit), columns=['Name', 'Average number of stars'])
-    for i in range(0, rank_limit):
-        contributor = contributors[i]
-        print(contributor)
-        df_stars.loc[i, 'Name'] = contributor
-        df_stars.loc[i, 'Average number of stars'] = getStarsContributor(contributor)
-    df_stars = df_stars.sort('Average number of stars', ascending=False)
-    return df_stars
+    contrib_stars = {contributor : getStarsContributor(contributor) for contributor in contributors}
+    
+    s = pd.Series(contrib_stars)
+    s = s.sort_values(ascending=False)
+    return s.to_frame()
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     print('--------------- CONTRIBUTORS ---------------')
-    df = getContributors(url)
-    print(df)
+    contributors = getContributors(url)
+    print(contributors)
 
     print('------------------- STARS ------------------')
-    df_stars = getStarsAll(df)
-    print(df_stars)
+    stars = getStarsAll(contributors)
+    print(stars)
 
     print('------------------- RECAP ------------------')
-    x = df_stars.index.values # ranks
-    y = df_stars['Average number of stars'].tolist() # number of stars
-    pseudos = df_stars['Name']
-    print(x,y)
-    plt.scatter(x, y, s=50)
-    
-    # Write pseudo for each point
-    for ind in range(len(x)):
-        plt.text(x[ind], y[ind], pseudos[x[ind]], horizontalalignment='center', verticalalignment='top')
-    plt.show()
+    print("\nTime elapsed to get avg stargazer per user : {} s".format(time.time() - start_time))
+
+    # Write in file
+    stars.to_csv('average_number_stars.csv', header=None, index=True, sep=';')
 
 
 
